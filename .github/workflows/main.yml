@@ -1,0 +1,56 @@
+name: React CI-CD pipeline
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - deploy
+  pull_request:
+    branches:
+      - main
+      - dev
+      - deploy
+jobs:
+  build:
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [10.x, 12.x]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Use Node.js ${{ matrix.node-version }}
+      id: setup-nodejs
+      uses: actions/setup-node@v1
+      with:
+        node-version: ${{ matrix.node-version }}
+    - name: Yarn Install
+      id: install-yarn
+      run: |
+        yarn install
+    - name: Production Build
+      id: yarn-build-production
+      run: |
+        yarn build
+    - name: Unit Tests
+      id: run-tests
+      run: |
+        yarn test
+    - name: Deploy to S3
+      id: deploy-to-aws-s3
+      uses: jakejarvis/s3-sync-action@master
+      with:
+        args: --acl public-read --delete
+      env:
+        AWS_S3_BUCKET: ${{ secrets.AWS_PRODUCTION_BUCKET_NAME }}
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+        SOURCE_DIR: "build"
+    - uses: act10ns/slack@v1
+      with:
+        status: ${{ job.status }}
+        steps: ${{ toJson(steps) }}
+        channel: '#github'
+      if: always()
